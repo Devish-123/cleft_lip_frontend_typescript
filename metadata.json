@@ -1,0 +1,5 @@
+{
+  "name": "Cleftix",
+  "description": "A futuristic, medical-grade AI application called Cleftix to predict Cleft Lip Syndrome in babies from uploaded images. This tool is for preliminary screening only and not a substitute for professional medical advice.",
+  "requestFramePermissions": []
+}
