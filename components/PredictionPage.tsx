@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { PredictionResult } from '../types';
 import { UploadZone } from './UploadZone';
 import { ResultCard } from './ResultCard';
+import { AlertIcon } from './icons/AlertIcon';
 
 type Status = 'idle' | 'processing' | 'analyzing';
 
@@ -20,8 +20,6 @@ export const PredictionPage: React.FC = () => {
         setResult(null); 
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
             const toBase64 = (file: File) => new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
@@ -36,56 +34,41 @@ export const PredictionPage: React.FC = () => {
 
             setStatus('analyzing');
 
-            const imagePart = {
-                inlineData: {
+            // The backend endpoint URL. In a real application, this would come from a config file.
+            const backendUrl = 'http://localhost:3001/api/predict';
+
+            const response = await fetch(backendUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    image: base64Image,
                     mimeType: imageFile.type,
-                    data: base64Image,
-                },
-            };
-
-            const textPart = {
-                text: `You are a highly specialized medical AI trained to screen for Cleft Lip Syndrome in fetal ultrasound images. Your primary function is to perform a detailed visual analysis of the provided image, focusing on the oral and nasal structures.
-
-**Analysis Instructions:**
-1.  **Locate the Fetal Face:** Identify the baby's face, specifically the upper lip and nose area.
-2.  **Examine the Upper Lip:** Scrutinize the continuity of the upper lip tissue. Look for any vertical gaps, splits, or indentations that break the normal contour of the lip.
-3.  **Assess Severity:** Note if the gap is a small notch or a wider separation extending towards the nostril.
-4.  **Formulate a Conclusion:** Based on these visual indicators, determine the likelihood of a cleft lip.
-
-**Output Format:**
-Provide your analysis in a strict JSON format. The JSON object must contain these exact fields:
-- "outcome": A string, either "Likely" or "Unlikely". This should be based on the presence or absence of clear visual indicators.
-- "confidence": A number between 0 and 100. This score should reflect your certainty in the "outcome" based on the clarity and quality of the image and the visibility of the key facial structures. A clear, well-defined gap should result in high confidence for a "Likely" outcome. A clear, continuous lip should result in high confidence for an "Unlikely" outcome. If the image is blurry or the face is obscured, the confidence score should be lower.
-- "recommendation": A brief, clear recommendation. For "Likely" outcomes, strongly advise consulting a healthcare professional for a definitive diagnosis. For "Unlikely", state that indicators were not found but professional consultation is always best for health concerns.`,
-            };
-
-            const responseSchema = {
-                type: Type.OBJECT,
-                properties: {
-                    outcome: { type: Type.STRING, description: 'The screening outcome, "Likely" or "Unlikely".' },
-                    confidence: { type: Type.NUMBER, description: 'The confidence score from 0 to 100.' },
-                    recommendation: { type: Type.STRING, description: 'Actionable recommendation for the user.' },
-                },
-                required: ["outcome", "confidence", "recommendation"],
-            };
-
-            const response: GenerateContentResponse = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: { parts: [imagePart, textPart] },
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema,
-                    temperature: 0.2,
-                },
+                }),
             });
+    
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'An unknown server error occurred.' }));
+                throw new Error(errorData.error || `Request failed with status: ${response.status}`);
+            }
+    
+            const resultJson: PredictionResult = await response.json();
             
-            const resultJson = JSON.parse(response.text);
             resultJson.confidence = parseFloat(resultJson.confidence.toFixed(1));
-            setResult(resultJson as PredictionResult);
+            setResult(resultJson);
 
         } catch (err) {
             console.error("Error during prediction:", err);
-            setError("An error occurred during the analysis. Please try again.");
+            let displayError = "An unknown error occurred. Please try again.";
+            if (err instanceof Error) {
+                if (err.message.includes('Failed to fetch')) {
+                    displayError = "Could not connect to the analysis server. Please ensure it's running and try again.";
+                } else {
+                    displayError = err.message;
+                }
+            }
+            setError(displayError);
         } finally {
             setStatus('idle');
         }
@@ -108,7 +91,19 @@ Provide your analysis in a strict JSON format. The JSON object must contain thes
 
                 <UploadZone onPredict={handlePredict} status={status} />
                 
-                {error && <p className="text-center text-sm text-red-600">{error}</p>}
+                {error && (
+                    <div className="bg-red-100 border-l-4 border-red-500 text-red-800 p-4 rounded-md animate-fade-in" role="alert">
+                        <div className="flex">
+                            <div className="py-1">
+                                <AlertIcon className="w-6 h-6 text-red-500 mr-4" />
+                            </div>
+                            <div>
+                                <p className="font-bold">Analysis Failed</p>
+                                <p className="text-sm">{error}</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 
                 {result && <ResultCard result={result} />}
 

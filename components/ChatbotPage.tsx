@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI, Chat } from "@google/genai";
 import { BotIcon } from './icons/BotIcon';
 import { SendIcon } from './icons/SendIcon';
 import { ApolloLogo } from './ApolloLogo';
@@ -60,23 +59,11 @@ const ChatIntroCard: React.FC<{ onQuestionClick: (question: string) => void }> =
 };
 
 export const ChatbotPage: React.FC = () => {
-  const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isIntroVisible, setIsIntroVisible] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const newChat = ai.chats.create({
-      model: 'gemini-2.5-flash',
-      config: {
-        systemInstruction: 'You are Cleftix AI, a friendly and knowledgeable assistant specialized in Cleft Lip Syndrome. Provide clear, supportive, and informative answers to user questions. Always remind users that you are an AI assistant and not a substitute for professional medical advice.',
-      },
-    });
-    setChat(newChat);
-  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -86,49 +73,74 @@ export const ChatbotPage: React.FC = () => {
 
   const handleSendMessage = async (messageText?: string) => {
     const textToSend = messageText || userInput;
-    if (!textToSend.trim() || isLoading || !chat) return;
-    
+    if (!textToSend.trim() || isLoading) return;
+
     if (isIntroVisible) {
       setIsIntroVisible(false);
     }
 
-    const userMessage: Message = { role: 'user', text: textToSend };
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
-    
+    const newMessages: Message[] = [...messages, { role: 'user', text: textToSend }];
+    setMessages(newMessages);
+
     if (!messageText) {
       setUserInput('');
     }
-    
+
     setIsLoading(true);
 
     try {
-      const response = await chat.sendMessageStream({ message: textToSend });
-      
-      let currentModelText = '';
-      setMessages((prevMessages) => [...prevMessages, { role: 'model', text: '' }]);
-
-      for await (const chunk of response) {
-        currentModelText += chunk.text;
-        setMessages((prevMessages) => {
-          const newMessages = [...prevMessages];
-          newMessages[newMessages.length - 1].text = currentModelText;
-          return newMessages;
+        const backendUrl = 'http://localhost:3001/api/chat';
+        const response = await fetch(backendUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message: textToSend,
+                history: messages, // Send history before the new user message
+            }),
         });
-      }
+
+        if (!response.ok || !response.body) {
+            throw new Error('Failed to get response from server.');
+        }
+
+        let currentModelText = '';
+        setMessages((prevMessages) => [...prevMessages, { role: 'model', text: '' }]);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+                break;
+            }
+            currentModelText += decoder.decode(value, { stream: true });
+            setMessages((prevMessages) => {
+                const updatedMessages = [...prevMessages];
+                updatedMessages[updatedMessages.length - 1].text = currentModelText;
+                return updatedMessages;
+            });
+        }
+
     } catch (error) {
-      console.error('Error sending message:', error);
-      setMessages((prevMessages) => {
-          const newMessages = [...prevMessages];
-          const lastMessage = newMessages[newMessages.length - 1];
-          if (lastMessage && lastMessage.role === 'model') {
-             lastMessage.text = 'Sorry, something went wrong. Please try again.';
-          }
-          return newMessages;
-      });
+        console.error('Error sending message:', error);
+        setMessages((prevMessages) => {
+            const newMessages = [...prevMessages];
+            const lastMessage = newMessages[newMessages.length - 1];
+            if (lastMessage && lastMessage.role === 'model' && lastMessage.text === '') {
+               lastMessage.text = 'Sorry, something went wrong. Please try again.';
+            } else {
+               newMessages.push({ role: 'model', text: 'Sorry, something went wrong. Please try again.' });
+            }
+            return newMessages;
+        });
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
   };
+
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
