@@ -89,15 +89,19 @@ export const ChatbotPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-        const backendUrl = 'http://localhost:3001/api/chat';
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const backendUrl = `${supabaseUrl}/functions/v1/chat`;
+
         const response = await fetch(backendUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseAnonKey}`,
             },
             body: JSON.stringify({
                 message: textToSend,
-                history: messages, // Send history before the new user message
+                history: messages,
             }),
         });
 

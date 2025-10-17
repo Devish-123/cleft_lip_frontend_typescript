@@ -1,0 +1,12 @@
+{
+  "name": "cleftix-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'Backend uses Supabase Edge Functions - use supabase CLI or deploy tools'",
+    "build": "echo 'Backend uses Supabase Edge Functions - no build needed'"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  }
+}

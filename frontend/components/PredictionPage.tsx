@@ -34,13 +34,15 @@ export const PredictionPage: React.FC = () => {
 
             setStatus('analyzing');
 
-            // The backend endpoint URL. In a real application, this would come from a config file.
-            const backendUrl = 'http://localhost:3001/api/predict';
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+            const backendUrl = `${supabaseUrl}/functions/v1/predict`;
 
             const response = await fetch(backendUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseAnonKey}`,
                 },
                 body: JSON.stringify({
                     image: base64Image,
