@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { GoogleGenAI, Chat } from "@google/genai";
 import { BotIcon } from './icons/BotIcon';
 import { SendIcon } from './icons/SendIcon';
 import { ApolloLogo } from './ApolloLogo';
@@ -63,7 +64,29 @@ export const ChatbotPage: React.FC = () => {
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isIntroVisible, setIsIntroVisible] = useState(true);
+  const [chat, setChat] = useState<Chat | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!process.env.API_KEY) {
+        setError("API_KEY is not configured. Chatbot is disabled.");
+        return;
+    }
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const newChat = ai.chats.create({
+            model: 'gemini-2.5-flash',
+            config: {
+                systemInstruction: 'You are Cleftix AI, a friendly and knowledgeable assistant specialized in Cleft Lip Syndrome. Provide clear, supportive, and informative answers to user questions. Always remind users that you are an AI assistant and not a substitute for professional medical advice.',
+            },
+        });
+        setChat(newChat);
+    } catch (e) {
+        console.error("Failed to initialize chat:", e);
+        setError("Could not initialize the AI chat session.");
+    }
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -73,7 +96,7 @@ export const ChatbotPage: React.FC = () => {
 
   const handleSendMessage = async (messageText?: string) => {
     const textToSend = messageText || userInput;
-    if (!textToSend.trim() || isLoading) return;
+    if (!textToSend.trim() || isLoading || !chat) return;
 
     if (isIntroVisible) {
       setIsIntroVisible(false);
@@ -89,38 +112,13 @@ export const ChatbotPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        const backendUrl = `${supabaseUrl}/functions/v1/chat`;
-
-        const response = await fetch(backendUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseAnonKey}`,
-            },
-            body: JSON.stringify({
-                message: textToSend,
-                history: messages,
-            }),
-        });
-
-        if (!response.ok || !response.body) {
-            throw new Error('Failed to get response from server.');
-        }
+        const responseStream = await chat.sendMessageStream({ message: textToSend });
 
         let currentModelText = '';
         setMessages((prevMessages) => [...prevMessages, { role: 'model', text: '' }]);
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) {
-                break;
-            }
-            currentModelText += decoder.decode(value, { stream: true });
+        for await (const chunk of responseStream) {
+            currentModelText += chunk.text;
             setMessages((prevMessages) => {
                 const updatedMessages = [...prevMessages];
                 updatedMessages[updatedMessages.length - 1].text = currentModelText;
@@ -152,6 +150,17 @@ export const ChatbotPage: React.FC = () => {
       handleSendMessage();
     }
   };
+
+  if (error) {
+      return (
+        <div className="bg-slate-900 min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center p-4">
+            <div className="bg-red-100 border-l-4 border-red-500 text-red-800 p-6 rounded-md max-w-md text-center">
+                <p className="font-bold mb-2">Chat Unavailable</p>
+                <p>{error}</p>
+            </div>
+        </div>
+      );
+  }
 
   return (
     <div className="bg-slate-900 min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center p-4 sm:p-6">

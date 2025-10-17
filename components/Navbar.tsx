@@ -44,6 +44,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onHomeClick, onPredictClick, onE
             <NavLink onClick={onPredictClick}>Predict Cleft Lip</NavLink>
             <NavLink onClick={onAboutClick}>About</NavLink>
             <NavLink onClick={onContactClick}>Contact</NavLink>
+
+            <div className="h-6 w-px bg-slate-700 mx-2"></div>
+            
             <div className="flex flex-col items-center">
               <SirenIcon className="w-6 h-6 text-red-500 animate-rotate-slow animate-subtle-glow" />
               <span className="text-xs font-bold text-slate-300 mt-1 tracking-wider">1098</span>
