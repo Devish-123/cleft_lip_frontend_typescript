@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI, Chat } from "@google/genai";
 import { BotIcon } from './icons/BotIcon';
 import { SendIcon } from './icons/SendIcon';
 import { ApolloLogo } from './ApolloLogo';
 import { AlertIcon } from './icons/AlertIcon';
+import { GoogleGenAI, Content } from '@google/genai';
 
 interface Message {
   role: 'user' | 'model';
@@ -64,29 +63,8 @@ export const ChatbotPage: React.FC = () => {
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isIntroVisible, setIsIntroVisible] = useState(true);
-  const [chat, setChat] = useState<Chat | null>(null);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!process.env.API_KEY) {
-        setError("API_KEY is not configured. Chatbot is disabled.");
-        return;
-    }
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const newChat = ai.chats.create({
-            model: 'gemini-2.5-flash',
-            config: {
-                systemInstruction: 'You are Cleftix AI, a friendly and knowledgeable assistant specialized in Cleft Lip Syndrome. Provide clear, supportive, and informative answers to user questions. Always remind users that you are an AI assistant and not a substitute for professional medical advice.',
-            },
-        });
-        setChat(newChat);
-    } catch (e) {
-        console.error("Failed to initialize chat:", e);
-        setError("Could not initialize the AI chat session.");
-    }
-  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -96,7 +74,7 @@ export const ChatbotPage: React.FC = () => {
 
   const handleSendMessage = async (messageText?: string) => {
     const textToSend = messageText || userInput;
-    if (!textToSend.trim() || isLoading || !chat) return;
+    if (!textToSend.trim() || isLoading) return;
 
     if (isIntroVisible) {
       setIsIntroVisible(false);
@@ -110,8 +88,27 @@ export const ChatbotPage: React.FC = () => {
     }
 
     setIsLoading(true);
+    setError(null);
 
     try {
+        if (!process.env.API_KEY) {
+            throw new Error("API_KEY environment variable not set.");
+        }
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        
+        const geminiHistory: Content[] = messages.map((msg: Message) => ({
+            role: msg.role,
+            parts: [{ text: msg.text }],
+        }));
+
+        const chat = ai.chats.create({
+            model: 'gemini-2.5-flash',
+            history: geminiHistory,
+            config: {
+                systemInstruction: 'You are Cleftix AI, a friendly and knowledgeable assistant specialized in Cleft Lip Syndrome. Provide clear, supportive, and informative answers to user questions. Always remind users that you are an AI assistant and not a substitute for professional medical advice.',
+            },
+        });
+
         const responseStream = await chat.sendMessageStream({ message: textToSend });
 
         let currentModelText = '';
@@ -126,15 +123,20 @@ export const ChatbotPage: React.FC = () => {
             });
         }
 
-    } catch (error) {
-        console.error('Error sending message:', error);
+    } catch (err) {
+        console.error('Error sending message:', err);
+        let displayError = 'Sorry, something went wrong. Please try again.';
+        if (err instanceof Error) {
+             displayError = err.message;
+        }
         setMessages((prevMessages) => {
             const newMessages = [...prevMessages];
             const lastMessage = newMessages[newMessages.length - 1];
+            // If the last message is an empty model message, populate it with the error.
             if (lastMessage && lastMessage.role === 'model' && lastMessage.text === '') {
-               lastMessage.text = 'Sorry, something went wrong. Please try again.';
-            } else {
-               newMessages.push({ role: 'model', text: 'Sorry, something went wrong. Please try again.' });
+               lastMessage.text = displayError;
+            } else { // Otherwise, add a new error message from the model.
+               newMessages.push({ role: 'model', text: displayError });
             }
             return newMessages;
         });

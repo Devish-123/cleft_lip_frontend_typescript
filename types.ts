@@ -4,3 +4,9 @@ export interface PredictionResult {
   confidence: number;
   recommendation: string;
 }
+
+export interface Hospital {
+  name: string;
+  address: string;
+  phone: string;
+}
